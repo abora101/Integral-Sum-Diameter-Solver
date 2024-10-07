@@ -1,0 +1,168 @@
+/* PURPOSE: MIT-PRIMES - find stricter bounds for isd(P_n)
+ * 
+ * RUNTIME: O(n*4^n)
+ * 
+ * NOTE: Code similar to "sd" code
+ * 
+ * Observations:
+ * isd for n=7 is 2n-4
+ * isd for n=8 is 2n-3
+ * isd for n=9 is 2n-3
+ * isd for n=10 is 2n-3
+ * isd for n=11 is 2n-2
+ * isd for n=12 is 2n-3
+ * 
+ * Revisions Necessary: Code must run for n <= 42
+ */
+#pragma GCC optimize("Ofast")
+#pragma GCC target("avx2")
+
+#include <bits/stdc++.h>
+using namespace std;
+
+typedef long long ll;
+
+//mostly standard dsu (union-find)
+//merge returns false if nodes part of same cc already
+//keeps track of degree of individual nodes as well
+struct dsu {
+    vector<ll> degree {};
+    vector<ll> parent {};
+    vector<ll> height {};
+    vector<ll> size {};
+    ll numSets;
+    ll maxSize;
+    
+    dsu(ll n) {
+        numSets = n;
+        maxSize = 1;
+        for (ll i=0; i<n; i++) {            
+            parent.push_back(i);
+            height.push_back(0);
+            size.push_back(1);
+            degree.push_back(0);
+        }
+    }
+    
+    ll find(ll x) {
+        if (parent[x]==x)
+            return x;
+        else {
+            ll ret = find(parent[x]);
+            parent[x] = ret;
+            return ret;
+        }
+    }
+    
+    bool merge(ll x, ll y) {
+        degree[x]++;
+        degree[y]++;
+        
+        ll xrep = find(x);
+        ll yrep = find(y);
+        if(xrep==yrep)
+            return false;
+		
+        if (height[xrep] > height[yrep]) {
+            parent[y] = xrep;
+            parent[yrep] = xrep;
+            size[xrep] += size[yrep];
+            maxSize = max(maxSize, size[xrep]);
+        }
+        else {
+            parent[x] = yrep;
+            parent[xrep] = yrep;
+            size[yrep] += size[xrep];
+            if (height[xrep] == height[yrep])
+                height[yrep]++;
+            maxSize = max(maxSize, size[yrep]);
+        }
+        numSets--;
+        return true;
+    }
+};
+
+int main() {
+    //input n
+    const int n = 11;
+    const int isd = 2*n - 2;
+    cout << "For n = " << n << " and isd = " << isd << " we have solutions (up to negation, not counting those covered by positive sd):\n";
+    
+    
+    for(int a1 = -isd/2; a1 < 1; a1++) { //casework on value of a1, note a1 >= -isd because otherwise we could change everything's sign and have a valid spum
+        cout << "Case a1 = " << a1 << ":\n";
+        for(ll mask = 0; mask < (1 << (isd-1)); mask++) { //casework on elements of L (bit i (where i in 1, isd-1) is truth of "a1+i in L")
+            //sets L
+            vector<int> L {}; //set of labels L
+            L.push_back(a1); //smallest element
+            
+            int count = 2; //dynamic, size of L
+            
+            int step = 1;
+            ll bmask = mask;
+            while(bmask > 0) {
+                if(bmask % 2 == 1) { //element in L
+                    count++;
+                    L.push_back(a1+step);
+                }
+                bmask /= 2;
+                step++;
+            }
+            
+            L.push_back(a1+isd); //largest element
+            
+            if(count < n) continue; //not enough vertices
+            //note that L is sorted already
+            
+            //store graph in DSU
+            dsu DSU {L.size()};
+        
+            for(int i = 0; i < L.size(); i++) {
+                for(int j = i+1; j < L.size(); j++) {
+                    for(int k = j+1; k < L.size(); k++) {
+                        if(L[i] + L[j] == L[k]) { //if i, j sum to another label
+                            DSU.merge(i, j); //make an edge
+                        }
+                        if(L[i] + L[k] == L[j]) { //if i, k sum to another label
+                            DSU.merge(i, k); //make an edge
+                        }
+                        if(L[k] + L[j] == L[i]) { //if k, j sum to another label
+                            DSU.merge(k, j); //make an edge
+                        }
+                    }
+                }
+            }
+            
+            //check graph
+            bool valid = true;
+            int endpts = 0;
+            for(int i = 0; i < L.size(); i++) {                
+                if(DSU.size[DSU.find(i)] == n) { //part of the path
+                    if(DSU.degree[i] > 2) {
+                        valid = false;
+                        break;
+                    }
+                    if(DSU.degree[i] == 1) 
+                        endpts++;
+                } else if(DSU.size[DSU.find(i)] == 1) { //isolated vertex
+                    count--; //redefine count as number of path vertices (should be n)
+                } else {
+                    valid = false;
+                    break;
+                }
+            }
+            if(count != n || endpts != 2) {
+                valid = false;
+            }
+            
+            
+            //print solutions
+            if(valid) {
+                for(int i:L) {
+                    cout << i << " ";
+                }
+                cout << "\n";
+            }
+        }
+    }
+}
