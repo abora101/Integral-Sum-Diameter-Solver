@@ -1,0 +1,371 @@
+/* PURPOSE: MIT-PRIMES - solve isd(P_n) for n bounded above
+ * 
+ * RUNTIME: O(n^3) with terrible constant factor?
+ * 
+ * Path of length 11 with isd(P_11)=20:    -7 -6 -5 -4 4 6 9 10 11 12 13
+Path of length 11 with isd(P_11)=20:    -8 -7 -6 -5 -4 4 5 9 10 11 12
+ * 
+ * Path of length 13 with isd(P_13)=25:    -10 -9 -8 -7 -6 -5 5 6 11 12 13 14 15
+    Path of length 13 with isd(P_13)=25:    -3 -2 2 3 7 8 9 13 14 18 19 21 22
+ * 
+ * Path of length 15 with isd(P_15)=30:    -11 -10 -9 -8 -7 -6 6 8 13 14 15 16 17 18 19
+Path of length 15 with isd(P_15)=30:    -12 -11 -10 -9 -8 -7 -6 6 7 13 14 15 16 17 18
+ * 
+ * 
+ */
+#pragma GCC optimize("Ofast")
+#pragma GCC target("avx2")
+
+typedef long long ll;
+
+#include <bits/stdc++.h>
+using namespace std;
+
+//sum-graph storage (built on a Disjoint-Set Union/Union-Find data structure)
+struct dsu {
+    int numSets;
+    int maxSize;
+    int target_isd;
+    vector<int> degree {};
+    vector<int> parent {};
+    vector<int> height {};
+    vector<int> size {};
+    vector<pair<int, int>> labels {};
+    
+    
+    dsu(int tgt_isd, int n=0) {
+        numSets = n;
+        maxSize = 1;
+        for (int i=0; i<n; i++) {            
+            parent.push_back(i);
+            height.push_back(0);
+            size.push_back(1);
+            degree.push_back(0);
+        }
+        target_isd = tgt_isd;
+    }
+    
+    
+    int maxlabel() { //maximum label in the set
+        if(labels.size() == 0) return -1;
+        int ml = labels[0].first;
+        for(auto a:labels) {
+            ml = max(a.first, ml);
+        }
+        return ml;
+    }
+    
+    int minlabel() { //minimum label in the set
+        if(labels.size() == 0) return -1;
+        int ml = labels[0].first;
+        for(auto a:labels) {
+            ml = min(a.first, ml);
+        }
+        return ml;
+    }
+    
+    int int_sd() { //integral sum-diameter of the set
+        int amin = 0; int amax = 0;
+        for(auto a:labels) {
+            amin = min(amin, a.first);
+            amax = max(amax, a.first);
+        }
+        return amax-amin;
+    }
+    
+    int nodes() { //number of nodes in the set
+        return degree.size();
+    }
+    
+    int effective_a_r1() { //finds the absolute value of the node with the smallest magnitude label
+        int ea1 = 999999;
+        for(auto a:labels) {
+            ea1 = min(abs(a.first), ea1);
+        }
+        return ea1;
+    }
+    
+    int nyu() { //returns 1 if a_{r} + a_{r+1} = 1, otherwise returns 0
+        int poslabel = 0;
+        int neglabel = 0;
+        for(int i = nodes()-1; i >= 0; i--) {
+            if(labels[i].first > 0) {
+                if(labels[i].first < poslabel)
+                    poslabel = labels[i].first;
+            } else {
+                if(labels[i].first > neglabel)
+                    neglabel = labels[i].first;
+            }
+                
+        }
+        if(poslabel+neglabel == 0) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+    
+    int t_setminus_m(int start, int end) { //returns a lower bound on the number of elements in t_setminus m
+        vector<int> possibles {};
+        for(auto i:labels) possibles.push_back(i.first);
+        unordered_set<int> integerSet(possibles.begin(), possibles.end());
+        if(possibles.size() == 0) return 0;
+
+        int count = 0;
+
+        for (int i = start; i <= end; i++) {
+            // Check if the current element is not in the set of labels
+            if (integerSet.find(i) == integerSet.end()) {
+                // Check if the previous element (i - effective_a_r1()) is also not in the set of labels
+                if (integerSet.find(i - effective_a_r1()) == integerSet.end()) {
+                    // Check if one of the labels is positive and the other is negative (this case is not counted)
+                    if (!(i > 0 && (i - effective_a_r1()) < 0) || (i < 0 && (i - effective_a_r1()) > 0)) {
+                        count++;
+                    }
+                }
+            }
+        }
+
+        return count;
+    }
+    
+
+    //returns false if this addition does not allow the resultant graph to be a sum graph
+    bool add_vertex(int label) {
+        int n = degree.size();
+        
+        //add a new node
+        numSets++;
+        parent.push_back(n);
+        height.push_back(0);
+        size.push_back(1);
+        degree.push_back(0);
+        
+        //add the new edges to this node
+        vector<pair<int, int>> possibles {};
+        for(auto i:labels) possibles.push_back(i);
+        sort(possibles.begin(), possibles.end());
+        vector<pair<int, int>> targets {};
+        for(auto i:labels) targets.push_back({i.first+label, i.second});
+        sort(targets.begin(), targets.end());
+        
+        // add the label to the set of labels
+        labels.push_back({label, n});
+        if(int_sd() > target_isd) return false;
+        if(label < -target_isd/2) return false;
+        
+        //add the new edges to this node
+        int a = 0; int b = 0;
+        while(a < labels.size()-1 && b < labels.size()-1) {
+            if(possibles[a].first == targets[b].first) {
+                if(!merge(targets[b].second, n)) {return false; } //cycle detection
+                if(degree[targets[b].second] > 2 || degree[n] > 2) {return false; } //star detection
+                a++;
+                b++;
+            } else if (possibles[a].first < targets[b].first) {
+                a++;
+            } else {
+                b++;
+            }
+        }
+        
+        //add the new edges due to this node
+        int left = 0;
+        int right = possibles.size() - 1;
+
+        while (left < right) {
+            int currentSum = possibles[left].first + possibles[right].first;
+            if (currentSum == label) {
+                // Found a pair with the desired sum
+                if(!merge(possibles[left].second, possibles[right].second)) {return false; } //cycle detection
+                if(degree[possibles[left].second] > 2 || degree[possibles[right].second] > 2) {return false; } //star detection
+                left++;
+                right--;
+            } else if (currentSum < label) {
+                left++;
+            } else {
+                right--;
+            }
+        }
+        
+        return true;
+    }
+    
+    //generalize add_vertex to add multiple vertices in sequence, terminating after the first failed addition
+    template<typename... Args> bool add_vertex(int label, Args... args) { 
+        return add_vertex(label) && add_vertex(args...);
+    }
+    
+    
+    //find a node's connected compenent representative
+    int find(int x) {
+        if (parent[x]==x)
+            return x;
+        else {
+            int ret = find(parent[x]);
+            parent[x] = ret;
+            return ret;
+        }
+    }
+    
+    //connect vertices x and y, returning false if this creates a cycle
+    bool merge(int x, int y) {
+        degree[x]++;
+        degree[y]++;
+        
+        int xrep = find(x);
+        int yrep = find(y);
+        if(xrep==yrep)
+            return false;
+		
+        if (height[xrep] > height[yrep]) {
+            parent[y] = xrep;
+            parent[yrep] = xrep;
+            size[xrep] += size[yrep];
+            maxSize = max(maxSize, size[xrep]);
+        }
+        else {
+            parent[x] = yrep;
+            parent[xrep] = yrep;
+            size[yrep] += size[xrep];
+            if (height[xrep] == height[yrep])
+                height[yrep]++;
+            maxSize = max(maxSize, size[yrep]);
+        }
+        numSets--;
+        return true;
+    }
+    
+    //checks if the current sum graph is a path and returns its length. returns -1 if not a path
+    int path_length() {
+        bool valid = true;
+        int count = degree.size();
+        int endpts = 0;
+        for(int i = 0; i < degree.size(); i++) //reduce count to the number of non-isolated vertices
+            if(size[find(i)] == 1)
+                return -1; // in ispum case, no isolated vertices!!!
+        
+        for(int i = 0; i < degree.size(); i++) {                
+            if(size[find(i)] == count) { //part of the path
+                if(degree[i] > 2) {
+                    valid = false;
+                    break;
+                }
+                if(degree[i] == 1) { //one of the terminal nodes on the graph
+                    endpts++;
+                }
+            } else if(size[find(i)] != 1) { //the node is part of a component
+                valid = false;
+                break;
+            }
+        }
+        if(endpts != 2) valid = false; //2 endpoints max
+        
+        if(!valid) return -1;
+        else return count;
+    }
+    
+    //print out the set of labels if the graph is a path
+    void disp(int n, int isd) {
+        //check if graph is a path with proper length and isd
+        if(path_length() != n) return;
+        if(int_sd() != isd) return;
+        
+        //print out labels in ascending order
+        cout << "Path of length " << n << " with isd(P_" << n << ")=" << isd << ":\t";
+        vector<pair<int, int>> possibles {};
+        for(auto i:labels) possibles.push_back(i);
+        sort(possibles.begin(), possibles.end());
+        
+        for(auto a:possibles) cout << a.first << " ";
+        cout << "\n";
+    }
+    
+};
+
+
+void search(dsu DSU, int n, int isd, int considered = -1) { //endval is -(isd+1)/2    
+    if(considered == -isd) return;
+    
+    int nextval = considered * -1;
+    if(nextval < 0) nextval--;
+    
+    dsu newDSU = DSU;
+    
+    //check if T \setminus M bound is still satisfied if a new blank is added
+    int upperbound = isd + 4 + DSU.nyu() - 2*max(DSU.nodes(), n);
+    if(considered < 0) {
+        int lo_tm = DSU.t_setminus_m(max(DSU.minlabel(), considered+DSU.effective_a_r1()),DSU.maxlabel()); 
+        if(upperbound >= lo_tm) {
+            search(DSU, n, isd, nextval);
+        }
+    } else  {
+        int hi_tm = DSU.t_setminus_m(DSU.minlabel()+DSU.effective_a_r1(), min(DSU.maxlabel()+DSU.effective_a_r1(), considered)); 
+        if(upperbound >= hi_tm) {
+            search(DSU, n, isd, nextval);
+        }
+    }
+    
+    //check if T\setminus M bound is still satisfied if a new vertex is added.
+    upperbound = isd + 4 + DSU.nyu() - 2*max(DSU.nodes()+1, n);
+    if(considered < 0) { //case when the new vertex added is negative
+        int lo_tm = DSU.t_setminus_m(considered+DSU.effective_a_r1(), min(DSU.maxlabel()-1+DSU.effective_a_r1(), -1 * considered - 1)); 
+        if(upperbound < lo_tm) return;
+    } else  { //case when the new vertex added is positive
+        int hi_tm = DSU.t_setminus_m(max(DSU.minlabel()+1, -considered+DSU.effective_a_r1()), considered); 
+        if(upperbound < hi_tm) return;
+    }
+    
+    //add a vertex
+    if(!newDSU.add_vertex(considered)) {
+        return;
+    } else {
+        newDSU.disp(n, isd);
+    }
+    search(newDSU, n, isd, nextval);
+}
+
+
+
+
+int main() {
+    //input n
+    cout << "Test isd for n=? : ";
+    int n;
+    cin >> n;
+    
+    
+    //runtime - start time
+    auto start_time = chrono::high_resolution_clock::now();
+    
+    
+    //test isd in range [2n-5, 2n-2], the bounds from Li
+    int isd = 2*n-2;
+    for(; isd <= 5*(n-3)/2; isd++) {
+        dsu DSU {isd};
+        search(DSU, n, isd, -1);
+    }
+
+//    dsu DSU {20};
+//    //-8 -7 -6 -5 -4 4 5 9 10 11 12
+//    cout << DSU.add_vertex(-4) << " " << DSU.t_setminus_m(max(DSU.minlabel(), -4+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(4) << " " << DSU.t_setminus_m(max(DSU.minlabel(), -5+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(-5) << " " << DSU.t_setminus_m(max(DSU.minlabel(),-5+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(5) << " " << DSU.t_setminus_m(max(DSU.minlabel(), -6+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(-6) << " " << DSU.t_setminus_m(max(DSU.minlabel(),-6+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(-7) << " " << DSU.t_setminus_m(max(DSU.minlabel(),-7+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(-8) << " " << DSU.t_setminus_m(max(DSU.minlabel(),-8+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(9) << " " << DSU.t_setminus_m(max(DSU.minlabel(), -10+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(10) << " " << DSU.t_setminus_m(max(DSU.minlabel(), -11+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(11) << " " << DSU.t_setminus_m(max(DSU.minlabel(), -12+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    cout << DSU.add_vertex(12) << " " << DSU.t_setminus_m(max(DSU.minlabel(), -13+DSU.effective_a_r1()),DSU.maxlabel()) << "\n";
+//    
+//    cout << DSU.path_length() << "\n";
+//    DSU.disp(11, 20);
+
+    
+    
+    //end execution time
+    auto end_time = chrono::high_resolution_clock::now();
+    cout << "Runtime: " << chrono::duration_cast<chrono::nanoseconds>(end_time    - start_time).count() << " nanoseconds\n";
+}
