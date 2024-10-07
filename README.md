@@ -1,4 +1,4 @@
-The main.cpp file is the actual solver.
+The main.cpp file is the actual solver. Solved for the integral sum-diameter of path graphs with a sufficient number of vertices theoretically, used above program to verify result for small n. 
 
 The code works by building up the set L by inserting elements in increasing order of magnitude, and stopping a search prematurely if |T \setminus M| exceeds its maximum value, or if cycles are formed in the graph. Checking for these possibilities is able to substantially improve the runtime beyond the O(2^n) of previous bitset approaches (see "slow" code in development) central to past computational approaches. 
 
