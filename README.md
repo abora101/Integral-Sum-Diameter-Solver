@@ -4,4 +4,6 @@ The code works by building up the set L by inserting elements in increasing orde
 
 In essence, the code brute-forces all possibilities and intelligently eliminates those small sets which cannot form a path. An important note - the code only checks for cases when isd < sd (i.e., there is at least one nonpositive label in L), as sd was solved without the use of advanced programs. 
 
+This program should run effectively linearly in n for very large n as there are not too many possibilities for L at that stage; however, this is with a very high constant factor. Additionally, runtime for small n is quite complex as it is related to the possible number of intermediate sets L. 
+
 Final paper published in Discrete Mathematics, "On the sum and sum-diameter of paths". Paper, poster, and slides viewable as pdfs in the github.
